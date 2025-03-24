@@ -5,7 +5,7 @@ from scipy.ndimage import shift
 from scipy.optimize import fsolve
 
 # Parametere
-fs = 100e3         # Samplingsfrekvens (100 kHz)
+fs = 100e6         # Samplingsfrekvens (100 kHz)
 T = 10e-3          # Pulslengde (10 ms)
 f0, f1 = 38e3, 42e3  # Sweep fra 38 kHz til 42 kHz
 c = 1500           # Lydhastighet i vann (m/s)
