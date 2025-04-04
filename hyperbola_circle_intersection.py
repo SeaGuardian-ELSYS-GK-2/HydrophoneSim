@@ -12,7 +12,7 @@ c = 1500
 # Posisjoner
 hydrophone1_pos = np.array([0.0, 0.0])
 hydrophone2_pos = np.array([1.0, 0.0])
-source_pos = np.array([3, 2.5])
+source_pos = np.array([1.75, 0.75])
 
 # Sanne tider og TDOA
 d1 = np.linalg.norm(source_pos - hydrophone1_pos)
@@ -40,8 +40,8 @@ estimated_dt12 = lags[peak] / fs
 print(f"Estimert TDOA (H2 vs H1): {estimated_dt12 * 1e6:.2f} µs")
 
 # Grid for hyperbel og sirkel
-x_min, x_max = -0.5, 3.5
-y_min, y_max = -0.5, 3.5
+x_min, x_max = -3.5, 3.5
+y_min, y_max = -3.5, 3.5
 Ngrid = 600
 x_vals = np.linspace(x_min, x_max, Ngrid)
 y_vals = np.linspace(y_min, y_max, Ngrid)
@@ -65,13 +65,10 @@ intersection_y = yy[intersection_mask]
 
 # --- Plot ---
 plt.figure(figsize=(7,6))
-# Hyperbel
-cs1 = plt.contour(xx, yy, diff - level, levels=[0], linestyles='--', colors='blue')
-cs1.collections[0].set_label("Hyperbel TDOA(H2 vs H1)")
 
-# Sirkel
-cs2 = plt.contour(xx, yy, circle_eq, levels=[0], linestyles='--', colors='green')
-cs2.collections[0].set_label("Sirkel (c·t1)")
+# Hyperbel
+plt.contour(xx, yy, diff - level, levels=[0], linestyles='--', colors='blue', label="Hyperbel TDOA(H2 vs H1)")
+plt.contour(xx, yy, circle_eq, levels=[0], linestyles='--', colors='green', label="Sirkel (c·t1)")
 
 # Interseksjon
 plt.plot(intersection_x, intersection_y, 'r*', label="Interseksjon", markersize=8)
