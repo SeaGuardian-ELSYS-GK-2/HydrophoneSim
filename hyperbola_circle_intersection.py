@@ -37,7 +37,7 @@ corr = correlate(hydrophone1, hydrophone2, mode='full')
 lags = np.arange(-len(hydrophone1)+1, len(hydrophone1))
 peak = np.argmax(np.abs(corr))
 estimated_dt12 = lags[peak] / fs
-print(f"Estimert TDOA (H2 vs H1): {estimated_dt12 * 1e6:.2f} µs")
+# print(f"Estimert TDOA (H2 vs H1): {estimated_dt12 * 1e6:.2f} µs")
 
 # Grid for hyperbel og sirkel
 x_min, x_max = -3.5, 3.5
@@ -51,7 +51,7 @@ xx, yy = np.meshgrid(x_vals, y_vals)
 d1_grid = np.sqrt((xx - hydrophone1_pos[0])**2 + (yy - hydrophone1_pos[1])**2)
 d2_grid = np.sqrt((xx - hydrophone2_pos[0])**2 + (yy - hydrophone2_pos[1])**2)
 diff = d2_grid - d1_grid
-level = c * delta_t12_true
+level = c * estimated_dt12
 
 # Sirkelen: avstand til H1 lik c * time1
 circle_radius = c * time1
