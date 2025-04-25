@@ -13,8 +13,9 @@ T = 10e-3
 f0, f1 = 38e3, 42e3
 c = 1500
 
-hydrophone1_pos = np.array([0.0, 0.0])
-hydrophone2_pos = np.array([1.0, 0.0])
+hydrophone1_pos = np.array([0.0, 0.2])
+hydrophone2_pos = np.array([-1.0, 0.0])
+hydrophone3_pos = np.array([1.0, 0.0])
 
 x_min, x_max = -3.5, 3.5
 y_min, y_max = -3.5, 3.5
@@ -87,74 +88,93 @@ ax.grid(True)
 ax.set_title("TDOA-basert lokalisering med interseksjon")
 
 # Hydrophones
-ax.plot(*hydrophone1_pos, 'o', label="H1 (0,0)")
-ax.plot(*hydrophone2_pos, 'o', label="H2 (1,0)")
+ax.plot(*hydrophone1_pos, 'o', label=f"H1 ({hydrophone1_pos[0]:.2f},{hydrophone1_pos[1]:.2f})")
+ax.plot(*hydrophone2_pos, 'o', label=f"H2 ({hydrophone2_pos[0]:.2f},{hydrophone2_pos[1]:.2f})")
+ax.plot(*hydrophone3_pos, 'o', label=f"H3 ({hydrophone3_pos[0]:.2f},{hydrophone3_pos[1]:.2f})")
 
 # Source
 source = DraggablePoint(ax, np.array([1.75, 0.75]), color='red')
 
 # Intersection and contours
-intersection_plot, = ax.plot([], [], 'r*', label="Interseksjon", markersize=8)
-hyperbola_plot = None
+intersection_plot, = ax.plot([], [], 'b*', label="Interseksjon", markersize=8)
+hyperbola12_plot = None
+hyperbola13_plot = None
 circle_plot = None
 
 ax.legend()
 
 
 def update(_):
-    global hyperbola_plot, circle_plot
+    global hyperbola12_plot, hyperbola13_plot, circle_plot
 
     source_pos = source.get_position()
 
     # True delay (only used for simulation)
     d1 = np.linalg.norm(source_pos - hydrophone1_pos)
     d2 = np.linalg.norm(source_pos - hydrophone2_pos)
+    d3 = np.linalg.norm(source_pos - hydrophone3_pos)
     time1 = d1 / c
+
     delta_t12_true = (d2 - d1) / c
+    delta_t13_true = (d3 - d1) / c
 
     # Simulated signals
     hydrophone1 = sweep
     hydrophone2 = shift(sweep, -time_to_samples(delta_t12_true), mode='nearest')
+    hydrophone3 = shift(sweep, -time_to_samples(delta_t13_true), mode='nearest')
 
-    # Estimate TDOA via cross-correlation
-    corr = correlate(hydrophone1, hydrophone2, mode='full')
-    lags = np.arange(-len(hydrophone1)+1, len(hydrophone1))
-    peak = np.argmax(np.abs(corr))
-    estimated_dt12 = lags[peak] / fs
-    print(f"[Update] Estimert TDOA (H2 vs H1): {estimated_dt12 * 1e6:.2f} µs")
+    # Estimate TDOAs via cross-correlation
+    corr12 = correlate(hydrophone1, hydrophone2, mode='full')
+    lags12 = np.arange(-len(hydrophone1)+1, len(hydrophone1))
+    peak12 = np.argmax(np.abs(corr12))
+    estimated_dt12 = lags12[peak12] / fs
+
+    corr13 = correlate(hydrophone1, hydrophone3, mode='full')
+    lags13 = np.arange(-len(hydrophone1)+1, len(hydrophone1))
+    peak13 = np.argmax(np.abs(corr13))
+    estimated_dt13 = lags13[peak13] / fs
+
+    print(f"[Update] Estimert TDOA H2-H1: {estimated_dt12 * 1e6:.2f} µs")
+    print(f"[Update] Estimert TDOA H3-H1: {estimated_dt13 * 1e6:.2f} µs")
 
     # Geometry for plotting
     d1_grid = np.sqrt((xx - hydrophone1_pos[0])**2 + (yy - hydrophone1_pos[1])**2)
     d2_grid = np.sqrt((xx - hydrophone2_pos[0])**2 + (yy - hydrophone2_pos[1])**2)
-    diff = d2_grid - d1_grid
+    d3_grid = np.sqrt((xx - hydrophone3_pos[0])**2 + (yy - hydrophone3_pos[1])**2)
 
-    level = c * estimated_dt12
+    diff12 = d2_grid - d1_grid
+    diff13 = d3_grid - d1_grid
+
+    level12 = c * estimated_dt12
+    level13 = c * estimated_dt13
+
     circle_radius = c * time1
-
     circle_eq = d1_grid - circle_radius
 
     # Intersections
     tolerance = 0.005
-    intersection_mask = (np.abs(diff - level) < tolerance) & (np.abs(circle_eq) < tolerance)
+    intersection_mask = (np.abs(diff12 - level12) < tolerance) & (np.abs(diff13 - level13) < tolerance) & (np.abs(circle_eq) < tolerance)
     intersection_x = xx[intersection_mask]
     intersection_y = yy[intersection_mask]
     intersection_plot.set_data(intersection_x, intersection_y)
 
-    # Optional: estimated lat/lng from local origin if you're simulating GPS coordinates
     if intersection_x.size > 0:
         estimated_x = np.mean(intersection_x)
         estimated_y = np.mean(intersection_y)
         print(f"[Update] Beregnet kildeposisjon: ({estimated_x:.2f}, {estimated_y:.2f})")
-        # If you're working with GPS:
-        # estimated_lat, estimated_lng = offset_latlng(lat, lng, estimated_x, estimated_y)
-        # print(f"Estimated coordinates: ({estimated_lat}, {estimated_lng})")
     else:
         print("[Update] Ingen interseksjon funnet.")
 
     # Plot update
-    if hyperbola_plot: [c.remove() for c in hyperbola_plot.collections]
-    if circle_plot: [c.remove() for c in circle_plot.collections]
-    hyperbola_plot = ax.contour(xx, yy, diff - level, levels=[0], linestyles='--', colors='blue')
+    if hyperbola12_plot:
+        [c.remove() for c in hyperbola12_plot.collections]
+    if hyperbola13_plot:
+        [c.remove() for c in hyperbola13_plot.collections]
+    if circle_plot:
+        [c.remove() for c in circle_plot.collections]
+
+    hyperbola12_plot = ax.contour(xx, yy, diff12 - level12, levels=[0], linestyles='--', colors='blue')
+    hyperbola13_plot = ax.contour(xx, yy, diff13 - level13, levels=[0], linestyles='--', colors='purple')
     circle_plot = ax.contour(xx, yy, circle_eq, levels=[0], linestyles='--', colors='green')
 
     fig.canvas.draw_idle()
