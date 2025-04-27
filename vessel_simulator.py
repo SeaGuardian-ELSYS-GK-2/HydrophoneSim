@@ -236,7 +236,7 @@ def update(_):
     signals, time = generate_delayed_signals(fs, c, T, source_pos, hydrophones_pos, f0, f1, total_time)
     t = time
 
-    signals = add_bandlimited_noise_to_signals(signals, fs, f0, f1, noise_level=0.65)
+    signals = add_bandlimited_noise_to_signals(signals, fs, f0, f1, noise_level=0.5)
 
     # True delay (only used for simulation)
     d1 = np.linalg.norm(source_pos - hydrophone1_pos)
