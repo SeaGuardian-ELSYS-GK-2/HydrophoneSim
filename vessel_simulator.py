@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+import matplotlib.gridspec as gridspec
 from scipy.signal import chirp, correlate
 from scipy.ndimage import shift
 
@@ -13,8 +14,9 @@ T = 10e-3
 f0, f1 = 38e3, 42e3
 c = 1500
 
-hydrophone1_pos = np.array([0.0, 0.0])
-hydrophone2_pos = np.array([1.0, 0.0])
+hydrophone1_pos = np.array([0.0, 0.2])
+hydrophone2_pos = np.array([-1.0, 0.0])
+hydrophone3_pos = np.array([1.0, 0.0])
 
 x_min, x_max = -3.5, 3.5
 y_min, y_max = -3.5, 3.5
@@ -78,84 +80,127 @@ def offset_latlng(lat, lng, dx_m, dy_m):
     return new_lat, new_lng
 
 
-# --- Set up figure ---
-fig, ax = plt.subplots(figsize=(8, 6))
-ax.set_xlim(x_min, x_max)
-ax.set_ylim(y_min, y_max)
-ax.set_aspect('equal')
-ax.grid(True)
-ax.set_title("TDOA-basert lokalisering med interseksjon")
+# --- Set up figure with subplots ---
+fig = plt.figure(figsize=(12, 6))
+gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[1, 1], figure=fig)
+
+ax_main = fig.add_subplot(gs[:, 0])  # Full height for main plot
+ax_signal = fig.add_subplot(gs[0, 1])  # Top right: Signals
+ax_corr = fig.add_subplot(gs[1, 1])    # Bottom right: Correlation
+
+ax_main.set_xlim(x_min, x_max)
+ax_main.set_ylim(y_min, y_max)
+ax_main.set_aspect('equal')
+ax_main.grid(True)
+ax_main.set_title("TDOA-basert lokalisering med interseksjon")
 
 # Hydrophones
-ax.plot(*hydrophone1_pos, 'o', label="H1 (0,0)")
-ax.plot(*hydrophone2_pos, 'o', label="H2 (1,0)")
+ax_main.plot(*hydrophone1_pos, 'o', label=f"H1 ({hydrophone1_pos[0]:.2f},{hydrophone1_pos[1]:.2f})")
+ax_main.plot(*hydrophone2_pos, 'o', label=f"H2 ({hydrophone2_pos[0]:.2f},{hydrophone2_pos[1]:.2f})")
+ax_main.plot(*hydrophone3_pos, 'o', label=f"H3 ({hydrophone3_pos[0]:.2f},{hydrophone3_pos[1]:.2f})")
 
 # Source
-source = DraggablePoint(ax, np.array([1.75, 0.75]), color='red')
+source = DraggablePoint(ax_main, np.array([1.75, 0.75]), color='red')
 
 # Intersection and contours
-intersection_plot, = ax.plot([], [], 'r*', label="Interseksjon", markersize=8)
-hyperbola_plot = None
+intersection_plot, = ax_main.plot([], [], 'b*', label="Interseksjon", markersize=8)
+hyperbola12_plot = None
+hyperbola13_plot = None
 circle_plot = None
 
-ax.legend()
+ax_main.legend()
 
 
 def update(_):
-    global hyperbola_plot, circle_plot
+    global hyperbola12_plot, hyperbola13_plot, circle_plot
 
     source_pos = source.get_position()
 
     # True delay (only used for simulation)
     d1 = np.linalg.norm(source_pos - hydrophone1_pos)
     d2 = np.linalg.norm(source_pos - hydrophone2_pos)
+    d3 = np.linalg.norm(source_pos - hydrophone3_pos)
     time1 = d1 / c
+
     delta_t12_true = (d2 - d1) / c
+    delta_t13_true = (d3 - d1) / c
 
     # Simulated signals
     hydrophone1 = sweep
     hydrophone2 = shift(sweep, -time_to_samples(delta_t12_true), mode='nearest')
+    hydrophone3 = shift(sweep, -time_to_samples(delta_t13_true), mode='nearest')
 
-    # Estimate TDOA via cross-correlation
-    corr = correlate(hydrophone1, hydrophone2, mode='full')
-    lags = np.arange(-len(hydrophone1)+1, len(hydrophone1))
-    peak = np.argmax(np.abs(corr))
-    estimated_dt12 = lags[peak] / fs
-    print(f"[Update] Estimert TDOA (H2 vs H1): {estimated_dt12 * 1e6:.2f} µs")
+    # Estimate TDOAs via cross-correlation
+    corr12 = correlate(hydrophone1, hydrophone2, mode='full')
+    lags12 = np.arange(-len(hydrophone1)+1, len(hydrophone1))
+    peak12 = np.argmax(np.abs(corr12))
+    estimated_dt12 = lags12[peak12] / fs
+
+    corr13 = correlate(hydrophone1, hydrophone3, mode='full')
+    lags13 = np.arange(-len(hydrophone1)+1, len(hydrophone1))
+    peak13 = np.argmax(np.abs(corr13))
+    estimated_dt13 = lags13[peak13] / fs
+
+    print(f"[Update] Estimert TDOA H2-H1: {estimated_dt12 * 1e6:.2f} µs")
+    print(f"[Update] Estimert TDOA H3-H1: {estimated_dt13 * 1e6:.2f} µs")
 
     # Geometry for plotting
     d1_grid = np.sqrt((xx - hydrophone1_pos[0])**2 + (yy - hydrophone1_pos[1])**2)
     d2_grid = np.sqrt((xx - hydrophone2_pos[0])**2 + (yy - hydrophone2_pos[1])**2)
-    diff = d2_grid - d1_grid
+    d3_grid = np.sqrt((xx - hydrophone3_pos[0])**2 + (yy - hydrophone3_pos[1])**2)
 
-    level = c * estimated_dt12
+    diff12 = d2_grid - d1_grid
+    diff13 = d3_grid - d1_grid
+
+    level12 = c * estimated_dt12
+    level13 = c * estimated_dt13
+
     circle_radius = c * time1
-
     circle_eq = d1_grid - circle_radius
 
     # Intersections
     tolerance = 0.005
-    intersection_mask = (np.abs(diff - level) < tolerance) & (np.abs(circle_eq) < tolerance)
+    intersection_mask = (np.abs(diff12 - level12) < tolerance) & (np.abs(diff13 - level13) < tolerance) & (np.abs(circle_eq) < tolerance)
     intersection_x = xx[intersection_mask]
     intersection_y = yy[intersection_mask]
     intersection_plot.set_data(intersection_x, intersection_y)
 
-    # Optional: estimated lat/lng from local origin if you're simulating GPS coordinates
     if intersection_x.size > 0:
         estimated_x = np.mean(intersection_x)
         estimated_y = np.mean(intersection_y)
         print(f"[Update] Beregnet kildeposisjon: ({estimated_x:.2f}, {estimated_y:.2f})")
-        # If you're working with GPS:
-        # estimated_lat, estimated_lng = offset_latlng(lat, lng, estimated_x, estimated_y)
-        # print(f"Estimated coordinates: ({estimated_lat}, {estimated_lng})")
     else:
         print("[Update] Ingen interseksjon funnet.")
 
-    # Plot update
-    if hyperbola_plot: [c.remove() for c in hyperbola_plot.collections]
-    if circle_plot: [c.remove() for c in circle_plot.collections]
-    hyperbola_plot = ax.contour(xx, yy, diff - level, levels=[0], linestyles='--', colors='blue')
-    circle_plot = ax.contour(xx, yy, circle_eq, levels=[0], linestyles='--', colors='green')
+    # Plot update for main figure
+    if hyperbola12_plot:
+        [c.remove() for c in hyperbola12_plot.collections]
+    if hyperbola13_plot:
+        [c.remove() for c in hyperbola13_plot.collections]
+    if circle_plot:
+        [c.remove() for c in circle_plot.collections]
+
+    hyperbola12_plot = ax_main.contour(xx, yy, diff12 - level12, levels=[0], linestyles='--', colors='blue')
+    hyperbola13_plot = ax_main.contour(xx, yy, diff13 - level13, levels=[0], linestyles='--', colors='purple')
+    circle_plot = ax_main.contour(xx, yy, circle_eq, levels=[0], linestyles='--', colors='green')
+
+    # --- Update right-side signal plot ---
+    ax_signal.clear()
+    ax_signal.plot(t * 1e3, hydrophone1, label="Hydrophone 1")
+    ax_signal.plot(t * 1e3, hydrophone2, label="Hydrophone 2")
+    ax_signal.set_title("Simulerte signaler")
+    ax_signal.set_xlabel("Tid (ms)")
+    ax_signal.legend()
+    ax_signal.grid(True)
+
+    # --- Update right-side correlation plot ---
+    ax_corr.clear()
+    ax_corr.plot(lags12 / fs * 1e6, corr12)
+    ax_corr.axvline(x=lags12[peak12] / fs * 1e6, color='red', linestyle='--', label=f'Maks korrelasjon ({estimated_dt12*1e6:.2f} µs)')
+    ax_corr.set_title(r"Krysskorrelasjon")
+    ax_corr.set_xlabel("Tidsforsinkelse (µs)")
+    ax_corr.grid(True)
+    ax_corr.legend()
 
     fig.canvas.draw_idle()
 
